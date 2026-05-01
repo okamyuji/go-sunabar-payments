@@ -14,15 +14,34 @@ func NewUUIDGenerator() *UUIDGenerator { return &UUIDGenerator{} }
 
 // NewTransferID UUID v7 を返す。 v7 は時系列順に並ぶため Outbox や DB インデックスに有利。
 func (g *UUIDGenerator) NewTransferID() string {
-	v, err := uuid.NewV7()
-	if err != nil {
-		// uuid.NewV7 の失敗は乱数源異常などの異常時のみ。 v4 にフォールバックする。
-		return uuid.NewString()
-	}
-	return v.String()
+	return g.newV7()
+}
+
+// NewAccountID UUID v7 を返す ( Account モジュール向けエイリアス ) 。
+func (g *UUIDGenerator) NewAccountID() string {
+	return g.newV7()
+}
+
+// NewInvoiceID UUID v7 を返す ( Reconciliation モジュール向けエイリアス ) 。
+func (g *UUIDGenerator) NewInvoiceID() string {
+	return g.newV7()
+}
+
+// NewIncomingTransactionID UUID v7 を返す ( Reconciliation モジュール向けエイリアス ) 。
+func (g *UUIDGenerator) NewIncomingTransactionID() string {
+	return g.newV7()
 }
 
 // NewIdempotencyKey UUID v4 を返す。 sunabar / 本番 BaaS の冪等キー要件 ( CHAR(36) ) に合致する。
 func (g *UUIDGenerator) NewIdempotencyKey() string {
 	return uuid.NewString()
+}
+
+// newV7 内部共有の UUID v7 生成。 失敗時は v4 にフォールバックする。
+func (g *UUIDGenerator) newV7() string {
+	v, err := uuid.NewV7()
+	if err != nil {
+		return uuid.NewString()
+	}
+	return v.String()
 }
