@@ -90,8 +90,11 @@ func (r *Relay) Run(ctx context.Context) error {
 
 // ProcessBatch 1 回分のバッチを取り出して処理する。 テストから直接呼べるように公開する。
 // SELECT ... FOR UPDATE SKIP LOCKED で他ワーカーとの競合を避ける。
+// 分離レベルは READ COMMITTED に固定し、 InnoDB の gap lock を抑える。
+// gap lock があると handler 内の outbox_events への新規 INSERT が同テーブルへの範囲ロックと衝突して
+// Lock wait timeout を起こす ( デフォルトの REPEATABLE READ で発生する典型問題 ) 。
 func (r *Relay) ProcessBatch(ctx context.Context) error {
-	tx, err := r.db.BeginTx(ctx, nil)
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return fmt.Errorf("relay begin: %w", err)
 	}
