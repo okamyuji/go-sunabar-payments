@@ -43,7 +43,7 @@ stateDiagram-v2
     FAILED --> [*]
 ```
 
-下記スニペットはvalidTransitionsマップの抜粋です。REQUESTEDから複数経路を許す形を、コードでそのまま読めます。
+下記スニペットはvalidTransitionsマップの抜粋です。REQUESTEDから複数経路を許す形を、コードからそのまま読み取れます。
 
 ```go
 var validTransitions = map[Status][]Status{
@@ -74,7 +74,7 @@ UNIQUE KEY uq_app_request_id (app_request_id),
 UNIQUE KEY uq_api_idempotency_key (api_idempotency_key),
 ```
 
-UNIQUE制約を2列に張ることで、HTTP API受付時の重複検知と、sunabarへの送信時の冪等性確保を、データ層だけで担保できます。アプリケーション層では「INSERTで重複が出たらErrAlreadyExistsとして既存を返す」という単純な分岐だけ書けばよくなります。冪等性のロジックをif文ベタ書きで管理すると必ずどこかで漏れますから、UNIQUE制約に押し付けてしまうのが堅い設計です。
+UNIQUE制約を2列に張ることで、HTTP API受付時の重複検知と、sunabarへの送信時の冪等性確保を、データ層だけで担保できます。アプリケーション層では「INSERTで重複が出たらErrAlreadyExistsとして既存を返す」という単純な分岐だけ書けばよくなります。冪等性のロジックをif文ベタ書きで管理すると必ずどこかで漏れるので、UNIQUE制約に押し付けてしまうのが堅い設計です。
 
 > 冪等キーのTTL切れを自動再生成で逃したら二重出金になった話
 >
@@ -107,4 +107,4 @@ GitHub: `internal/modules/transfer/application/handler_check_status.go`
 ---
 
 GitHubリポジトリ: `https://github.com/<owner>/go-sunabar-payments`
-関連ADR: ADR-003 (冪等キーの二重持ち) / ADR-004 (AWAITING_APPROVALを持つ) / ADR-005 (受信側冪等性)
+関連ADR: ADR-003 (冪等キーの二重持ち) / ADR-004 (AWAITING_APPROVALを持つ) / ADR-005 (受信側冪等性) / ADR-006 (リレーの分離レベルをREAD COMMITTEDに固定)
