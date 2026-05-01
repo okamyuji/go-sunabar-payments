@@ -1,5 +1,6 @@
 ---
 title: "Goとsunabarで作る個人開発の送金システム — モジュラーモノリス×Outboxで本番移行に耐える設計"
+emoji: "🏦"
 type: "tech"
 topics: ["go", "sunabar", "outbox", "ddd", "fintech"]
 published: false
