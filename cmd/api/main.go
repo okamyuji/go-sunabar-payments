@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"go-sunabar-payments/internal/modules/account"
 	"go-sunabar-payments/internal/modules/transfer"
 	"go-sunabar-payments/internal/platform/database"
 	"go-sunabar-payments/internal/platform/idempotency"
@@ -58,9 +59,11 @@ func run(logger *slog.Logger) error {
 	metrics := observability.NewMetrics()
 
 	mod := transfer.New(db, txMgr, pub, client, idGen, time.Now)
+	accMod := account.New(db, txMgr, client, idGen, time.Now)
 
 	mux := http.NewServeMux()
 	transfer.NewHTTPHandler(mod.Service).Register(mux)
+	accMod.HTTPHandler.Register(mux)
 	mux.Handle("GET /healthz", healthzHandler(db))
 	mux.Handle("GET /metrics", metricsJSONHandler(db, metrics))
 
