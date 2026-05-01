@@ -3,7 +3,6 @@ package application_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"testing"
 	"time"
 
@@ -102,9 +101,10 @@ func TestSendToSunabar_FailureMarksFailed(t *testing.T) {
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	tr := seedPendingTransfer(t, repo, "transfer-2", "app-2")
+	// 4xx は ADR-008 により即 MarkFailed 。 5xx ならリトライさせる ( 別テスト ) 。
 	stub := &stubSunabarClient{
 		requestFn: func(_ context.Context, _ sunabar.TransferRequest) (*sunabar.TransferResult, error) {
-			return nil, errors.New("over limit")
+			return nil, &sunabar.APIError{StatusCode: 400, RawBody: `{"error":"over limit"}`}
 		},
 	}
 
@@ -124,6 +124,34 @@ func TestSendToSunabar_FailureMarksFailed(t *testing.T) {
 	}
 	if events[0].EventType != domain.EventTransferFailed {
 		t.Errorf("event = %s, want TransferFailed", events[0].EventType)
+	}
+}
+
+func TestSendToSunabar_ServerErrorRetries(t *testing.T) {
+	t.Parallel()
+	repo := newInMemoryRepo()
+	pub := newInMemoryPublisher()
+	idGen := &fakeIDGen{}
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	tr := seedPendingTransfer(t, repo, "transfer-5xx", "app-5xx")
+	stub := &stubSunabarClient{
+		requestFn: func(_ context.Context, _ sunabar.TransferRequest) (*sunabar.TransferResult, error) {
+			return nil, &sunabar.APIError{StatusCode: 503, RawBody: `{"error":"upstream busy"}`}
+		},
+	}
+
+	h := application.NewSendToSunabarHandler(fakeTxManager{}, repo, pub, stub, idGen, func() time.Time { return now })
+	err := h.Handle(context.Background(), makeRequestedEvent(t, "transfer-5xx", tr.APIIdempotencyKey))
+	if err == nil {
+		t.Fatalf("err = nil, want non-nil ( 5xx はリトライさせる ) ")
+	}
+	got, _ := repo.FindByID(context.Background(), "transfer-5xx")
+	if got.Status != domain.StatusPending {
+		t.Errorf("status = %s, want PENDING ( 5xx は MarkFailed しない ) ", got.Status)
+	}
+	if len(pub.Events()) != 0 {
+		t.Errorf("events = %d, want 0 ( 5xx はイベント発行なし ) ", len(pub.Events()))
 	}
 }
 

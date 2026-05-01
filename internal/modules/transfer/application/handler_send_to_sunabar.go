@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -68,6 +69,12 @@ func (h *SendToSunabarHandler) Handle(ctx context.Context, evt outbox.Event) err
 		TransferDate:    h.now().Format("2006-01-02"),
 	})
 
+	// 5xx / 接続エラーはリトライ可能なのでハンドラ自身がエラーを返し、 Relay に再投入させる。
+	// 4xx はクライアント側の不具合なので即 MarkFailed に倒す ( ADR-008 ) 。
+	if apiErr != nil && isRetryable(apiErr) {
+		return apiErr
+	}
+
 	return h.txMgr.Do(ctx, func(ctx context.Context, tx transaction.Tx) error {
 		now := h.now()
 		if apiErr != nil {
@@ -110,6 +117,21 @@ func (h *SendToSunabarHandler) Handle(ctx context.Context, evt outbox.Event) err
 		}
 		return h.outbox.Publish(ctx, tx, schedEvt)
 	})
+}
+
+// isRetryable sunabar 呼び出しエラーがリトライ可能かを判定する。
+// - sunabar.APIError かつ StatusCode 5xx ならリトライ可
+// - APIError でないラップ済みエラー ( 接続失敗 / タイムアウト ) もリトライ可
+// - APIError かつ 4xx は不可 ( クライアント側不具合 )
+func isRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	var apiErr *sunabar.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.StatusCode >= 500
+	}
+	return true
 }
 
 // publishStateChanged 遷移先 status に対応する通知用イベントを Outbox に書き込む。
