@@ -1,0 +1,73 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+      - name: go fmt check
+        run: |
+          set -euo pipefail
+          out="$(gofmt -l .)"
+          if [ -n "$out" ]; then
+            echo "gofmt diff:" && echo "$out"
+            exit 1
+          fi
+      - name: go vet
+        run: go vet ./...
+      - name: staticcheck
+        uses: dominikh/staticcheck-action@v1
+        with:
+          version: latest
+          install-go: false
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.1
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: payments
+          MYSQL_USER: app
+          MYSQL_PASSWORD: app
+          TZ: Asia/Tokyo
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+      - name: build
+        run: go build ./...
+      - name: unit tests
+        run: go test -race -shuffle=on -count=1 -short ./...
+      - name: integration tests
+        env:
+          INTEGRATION_DB_DSN: app:app@tcp(127.0.0.1:3306)/payments?parseTime=true&loc=Asia%2FTokyo&multiStatements=true
+        run: go test -race -shuffle=on -count=1 -tags=integration -timeout=10m ./...

@@ -1,0 +1,42 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - misspell
+    - unconvert
+    - gocyclo
+    - gosec
+    - revive
+  settings:
+    gocyclo:
+      min-complexity: 15
+    revive:
+      rules:
+        - name: var-naming
+        - name: package-comments
+        - name: exported
+  exclusions:
+    rules:
+      - path: _test\.go$
+        linters:
+          - gocyclo
+          - gosec
+          - errcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
