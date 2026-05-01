@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -18,14 +19,14 @@ import (
 	transferdomain "go-sunabar-payments/internal/modules/transfer/domain"
 	"go-sunabar-payments/internal/platform/database"
 	"go-sunabar-payments/internal/platform/idempotency"
+	"go-sunabar-payments/internal/platform/observability"
 	"go-sunabar-payments/internal/platform/outbox"
 	"go-sunabar-payments/internal/platform/sunabar"
 	"go-sunabar-payments/internal/platform/transaction"
 )
 
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-
+	logger := observability.NewLogger(os.Stdout)
 	if err := run(logger); err != nil {
 		logger.Error("relay fatal", "err", err)
 		os.Exit(1)
@@ -76,10 +77,38 @@ func run(logger *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// メトリクス収集ループ。 Outbox の PENDING / FAILED 件数と Transfer の status 別件数を定期的に更新する。
+	metrics := observability.NewMetrics()
+	collectInterval := durationEnv("METRICS_COLLECT_INTERVAL", 30*time.Second)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		t := time.NewTicker(collectInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				if err := metrics.CollectFromDB(ctx, db); err != nil {
+					logger.Warn("metrics collect failed", "err", err)
+				} else {
+					snap := metrics.Snapshot()
+					logger.Info("metrics snapshot",
+						"outbox_pending", snap["outbox_pending_depth"],
+						"outbox_failed", snap["outbox_failed_depth"])
+				}
+			}
+		}
+	}()
+
 	logger.Info("relay started", "poll_interval", cfg.PollInterval, "batch", cfg.BatchSize)
 	if err := relay.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		wg.Wait()
 		return err
 	}
+	wg.Wait()
 	logger.Info("relay stopped")
 	return nil
 }

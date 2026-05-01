@@ -4,6 +4,8 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -15,14 +17,14 @@ import (
 	"go-sunabar-payments/internal/modules/transfer"
 	"go-sunabar-payments/internal/platform/database"
 	"go-sunabar-payments/internal/platform/idempotency"
+	"go-sunabar-payments/internal/platform/observability"
 	"go-sunabar-payments/internal/platform/outbox"
 	"go-sunabar-payments/internal/platform/sunabar"
 	"go-sunabar-payments/internal/platform/transaction"
 )
 
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-
+	logger := observability.NewLogger(os.Stdout)
 	if err := run(logger); err != nil {
 		logger.Error("api fatal", "err", err)
 		os.Exit(1)
@@ -53,20 +55,19 @@ func run(logger *slog.Logger) error {
 	txMgr := transaction.NewSQLManager(db)
 	pub := outbox.NewSQLPublisher()
 	idGen := idempotency.NewUUIDGenerator()
+	metrics := observability.NewMetrics()
 
 	mod := transfer.New(db, txMgr, pub, client, idGen, time.Now)
 
 	mux := http.NewServeMux()
 	transfer.NewHTTPHandler(mod.Service).Register(mux)
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
+	mux.Handle("GET /healthz", healthzHandler(db))
+	mux.Handle("GET /metrics", metricsJSONHandler(db, metrics))
 
 	addr := envOr(os.Getenv("API_ADDR"), ":8080")
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           mux,
+		Handler:           observability.HTTPMiddleware(logger)(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -100,7 +101,37 @@ func run(logger *slog.Logger) error {
 	return nil
 }
 
-// envOr str が空文字列なら def を返す ( os.Getenv のフォールバック共通化 ) 。
+// healthzHandler DB 接続の生死を返す軽量エンドポイント。 DB 障害時に 503 を返す。
+func healthzHandler(db *sql.DB) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := db.PingContext(ctx); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("db unavailable"))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+}
+
+// metricsJSONHandler 現在のメトリクス値を JSON で返す。 Prometheus 形式は本マイルストーンでは見送る。
+func metricsJSONHandler(db *sql.DB, m *observability.Metrics) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		defer cancel()
+		if err := m.CollectFromDB(ctx, db); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte("collect failed: " + err.Error()))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json;charset=UTF-8")
+		_ = json.NewEncoder(w).Encode(m.Snapshot())
+	})
+}
+
+// envOr str が空文字列なら def を返す。
 func envOr(s, def string) string {
 	if s == "" {
 		return def
