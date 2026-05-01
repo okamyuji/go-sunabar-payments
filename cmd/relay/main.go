@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"go-sunabar-payments/internal/modules/notification"
 	"go-sunabar-payments/internal/modules/transfer"
 	transferdomain "go-sunabar-payments/internal/modules/transfer/domain"
 	"go-sunabar-payments/internal/platform/database"
@@ -66,6 +67,11 @@ func run(logger *slog.Logger) error {
 	relay := outbox.NewRelay(db, cfg, logger)
 	relay.Register(transferdomain.EventTransferRequested, transferMod.SendToSunabarHandler)
 	relay.Register(transferdomain.EventTransferStatusCheck, transferMod.CheckStatusHandler)
+
+	notifMod := notification.New(db, logger, time.Now)
+	for _, et := range notifMod.SubscribedEventTypes() {
+		relay.Register(et, notifMod.TransferEventHandler)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
