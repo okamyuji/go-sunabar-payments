@@ -1,6 +1,7 @@
 .PHONY: help fmt vet lint staticcheck test test-unit test-integration build \
         run-api run-relay run-reconciler \
-        migrate-up migrate-down compose-up compose-down install-hooks ci-check
+        migrate-up migrate-down compose-up compose-down install-hooks ci-check \
+        smoke status emergency-stop seed
 
 GO          := go
 GOFLAGS     := -mod=readonly
@@ -72,3 +73,15 @@ ci-check: fmt vet staticcheck ## CI と同等のチェック ( lint + build + te
 	golangci-lint run ./...
 	$(GO) build ./...
 	$(GO) test $(GOFLAGS) -short -race -shuffle=on -count=1 ./...
+
+smoke: ## モック / 実機相手のスモークテスト ( API_BASE で切替 )
+	bash scripts/sunabar-smoke.sh
+
+status: ## 振込 / Outbox の状態を一覧表示 ( 運用補助 )
+	bash scripts/transfer-status.sh
+
+emergency-stop: ## 全 PENDING を FAILED に倒して送信を止める ( 確認プロンプト付き )
+	bash scripts/emergency-stop.sh
+
+seed: ## ローカル開発用の seed データを投入する
+	docker exec -i $(shell docker ps -qf "name=gsp-mysql") mysql -u$(DB_USER) -p$(DB_PASS) $(DB_NAME) < scripts/seed.sql
