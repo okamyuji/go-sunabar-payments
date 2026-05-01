@@ -1,0 +1,91 @@
+{
+  "info": {
+    "name": "go-sunabar-payments",
+    "description": "go-sunabar-payments の HTTP API コレクション。 ローカル / 実機いずれの動作確認にも使う。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key": "base", "value": "http://localhost:8080"},
+    {"key": "accountId", "value": "ACC0001"},
+    {"key": "appRequestId", "value": "postman-{{$timestamp}}"},
+    {"key": "transferId", "value": ""}
+  ],
+  "item": [
+    {
+      "name": "healthz",
+      "request": {"method": "GET", "url": "{{base}}/healthz"}
+    },
+    {
+      "name": "metrics",
+      "request": {"method": "GET", "url": "{{base}}/metrics", "header": [{"key": "Accept", "value": "application/json"}]}
+    },
+    {
+      "name": "accounts sync",
+      "request": {"method": "POST", "url": "{{base}}/accounts/sync"}
+    },
+    {
+      "name": "accounts list",
+      "request": {"method": "GET", "url": "{{base}}/accounts"}
+    },
+    {
+      "name": "accounts balance",
+      "request": {"method": "GET", "url": "{{base}}/accounts/{{accountId}}/balance"}
+    },
+    {
+      "name": "virtual accounts issue",
+      "request": {
+        "method": "POST",
+        "url": "{{base}}/virtual-accounts",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"memo\": \"invoice-001\",\n  \"expiresOn\": \"2027-12-31\"\n}"
+        }
+      }
+    },
+    {
+      "name": "virtual accounts list",
+      "request": {"method": "GET", "url": "{{base}}/virtual-accounts"}
+    },
+    {
+      "name": "transfers create",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const res = pm.response.json();",
+              "if (res && res.id) { pm.collectionVariables.set('transferId', res.id); }"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{base}}/transfers",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"appRequestId\": \"{{appRequestId}}\",\n  \"amount\": 1500,\n  \"sourceAccountId\": \"{{accountId}}\",\n  \"destBankCode\": \"0033\",\n  \"destBranchCode\": \"001\",\n  \"destAccountType\": \"1\",\n  \"destAccountNum\": \"1234567\",\n  \"destAccountName\": \"ヤマダ タロウ\"\n}"
+        }
+      }
+    },
+    {
+      "name": "transfers get ( 直前の create で保存した transferId を使う )",
+      "request": {"method": "GET", "url": "{{base}}/transfers/{{transferId}}"}
+    },
+    {
+      "name": "transfers create ( 同一 appRequestId 再送 )",
+      "request": {
+        "method": "POST",
+        "url": "{{base}}/transfers",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"appRequestId\": \"{{appRequestId}}\",\n  \"amount\": 1500,\n  \"sourceAccountId\": \"{{accountId}}\",\n  \"destBankCode\": \"0033\",\n  \"destBranchCode\": \"001\",\n  \"destAccountType\": \"1\",\n  \"destAccountNum\": \"1234567\",\n  \"destAccountName\": \"ヤマダ タロウ\"\n}"
+        }
+      }
+    }
+  ]
+}

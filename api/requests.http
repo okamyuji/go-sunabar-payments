@@ -1,0 +1,68 @@
+### go-sunabar-payments API リクエスト集
+# VS Code REST Client や JetBrains の HTTP Client で開いて使う想定。
+# 変数は環境ごとに `@base` を書き換える。
+
+@base = http://localhost:8080
+@accountId = ACC0001
+@appReqId = local-{{$timestamp}}
+
+### Health check
+GET {{base}}/healthz
+
+### Metrics ( Outbox / Transfer 集計 )
+GET {{base}}/metrics
+Accept: application/json
+
+### Sync accounts ( sunabar から取得して DB へ反映 )
+POST {{base}}/accounts/sync
+
+### List accounts
+GET {{base}}/accounts
+
+### Get balance
+GET {{base}}/accounts/{{accountId}}/balance
+
+### Issue virtual account
+POST {{base}}/virtual-accounts
+Content-Type: application/json
+
+{
+  "memo": "invoice-001",
+  "expiresOn": "2027-12-31"
+}
+
+### List virtual accounts
+GET {{base}}/virtual-accounts
+
+### Request transfer ( appRequestId で冪等性を担保 )
+POST {{base}}/transfers
+Content-Type: application/json
+
+{
+  "appRequestId": "{{appReqId}}",
+  "amount": 1500,
+  "sourceAccountId": "{{accountId}}",
+  "destBankCode": "0033",
+  "destBranchCode": "001",
+  "destAccountType": "1",
+  "destAccountNum": "1234567",
+  "destAccountName": "ヤマダ タロウ"
+}
+
+### Get transfer status ( 上記レスポンスの id を埋める )
+GET {{base}}/transfers/<TRANSFER_ID>
+
+### 同一 appRequestId で再送 -> 同じ id が返る ( 冪等 )
+POST {{base}}/transfers
+Content-Type: application/json
+
+{
+  "appRequestId": "{{appReqId}}",
+  "amount": 1500,
+  "sourceAccountId": "{{accountId}}",
+  "destBankCode": "0033",
+  "destBranchCode": "001",
+  "destAccountType": "1",
+  "destAccountNum": "1234567",
+  "destAccountName": "ヤマダ タロウ"
+}
