@@ -32,8 +32,8 @@ test: test-unit ## デフォルトはユニットテスト
 test-unit: ## ユニットテスト実行 ( -race -shuffle=on -count=1 )
 	$(GO) test $(GOFLAGS) -short -race -shuffle=on -count=1 ./...
 
-test-integration: ## 統合テスト実行 ( Docker が必要 )
-	$(GO) test $(GOFLAGS) -race -shuffle=on -count=1 -tags=integration -timeout=10m ./...
+test-integration: ## 統合テスト実行 ( Docker 必須、 共有 DB のため -p 1 で逐次 )
+	$(GO) test $(GOFLAGS) -race -shuffle=on -count=1 -p 1 -tags=integration -timeout=10m ./...
 
 build: ## 全バイナリをビルド
 	$(GO) build -o bin/api ./cmd/api
