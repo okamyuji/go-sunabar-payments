@@ -89,10 +89,14 @@ func migrationsDir(t *testing.T) string {
 }
 
 // resetSchema 既存のテーブルとマイグレーション履歴を削除し、 まっさらな状態に戻す。
-// 後続マイグレーションで追加された transfers なども消す ( 全テスト DROP 安全 ) 。
+// 後続マイグレーションで追加されたテーブルも忘れずに DROP する ( 全テスト DROP 安全 ) 。
 func resetSchema(t *testing.T, db *sql.DB) {
 	t.Helper()
 	stmts := []string{
+		"DROP TABLE IF EXISTS incoming_transactions",
+		"DROP TABLE IF EXISTS invoices",
+		"DROP TABLE IF EXISTS virtual_accounts",
+		"DROP TABLE IF EXISTS accounts",
 		"DROP TABLE IF EXISTS transfers",
 		"DROP TABLE IF EXISTS event_processed",
 		"DROP TABLE IF EXISTS outbox_events",

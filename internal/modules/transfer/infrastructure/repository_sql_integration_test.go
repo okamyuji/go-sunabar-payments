@@ -92,6 +92,10 @@ func migrationsDir(t *testing.T) string {
 func resetSchema(t *testing.T, db *sql.DB) {
 	t.Helper()
 	stmts := []string{
+		"DROP TABLE IF EXISTS incoming_transactions",
+		"DROP TABLE IF EXISTS invoices",
+		"DROP TABLE IF EXISTS virtual_accounts",
+		"DROP TABLE IF EXISTS accounts",
 		"DROP TABLE IF EXISTS transfers",
 		"DROP TABLE IF EXISTS event_processed",
 		"DROP TABLE IF EXISTS outbox_events",
