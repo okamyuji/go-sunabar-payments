@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -23,6 +24,7 @@ type Server struct {
 	transfers map[string]*storedTransfer // applyNo -> stored
 	keyIndex  map[string]string          // idempotencyKey -> applyNo
 	now       func() time.Time
+	listener  net.Listener // WithListener でセットされた固定ポート用リスナ
 }
 
 // storedTransfer モックが保持する振込状態。 状態遷移は GetTransferStatus 呼び出しのたびに進める。
@@ -49,6 +51,14 @@ func WithClock(now func() time.Time) Option {
 	}
 }
 
+// WithListener 独自の net.Listener を使う。 cmd/mocksunabar から固定ポート ( 例 :9090 ) で公開するために使う。
+// 指定時は httptest.NewServer ではなく、 渡されたリスナで Start する。
+func WithListener(l net.Listener) Option {
+	return func(s *Server) {
+		s.listener = l
+	}
+}
+
 // NewServer モックサーバを起動する。 Close で停止する。
 func NewServer(opts ...Option) *Server {
 	s := &Server{
@@ -68,7 +78,13 @@ func NewServer(opts ...Option) *Server {
 	mux.HandleFunc("/personal/v1/transfers/status", s.handleTransferStatus)
 	mux.HandleFunc("/personal/v1/virtual-accounts", s.handleVirtualAccount)
 
-	s.Server = httptest.NewServer(mux)
+	if s.listener != nil {
+		hs := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+		s.Server = &httptest.Server{Listener: s.listener, Config: hs}
+		s.Start()
+	} else {
+		s.Server = httptest.NewServer(mux)
+	}
 	return s
 }
 
