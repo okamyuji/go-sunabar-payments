@@ -1,0 +1,30 @@
+# compose.yml ローカル開発用の MySQL を起動する。
+# 既存の 3306 を使っている環境を考慮し、外向きポートは MYSQL_HOST_PORT 環境変数で
+# 上書きできるようにする (デフォルト 3306) 。アプリ側の DB_PORT も同じ値で読む。
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: gsp-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: payments
+      MYSQL_USER: app
+      MYSQL_PASSWORD: app
+      TZ: Asia/Tokyo
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+09:00
+    ports:
+      - "${MYSQL_HOST_PORT:-3306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  mysql-data:
