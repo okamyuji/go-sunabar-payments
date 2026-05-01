@@ -63,6 +63,10 @@ make test-integration
 | `make migrate-up` / `make migrate-down` | golang-migrate の操作 |
 | `make compose-up` / `make compose-down` | ローカル MySQL 起動 / 停止 |
 | `make install-hooks` | core.hooksPath を .githooks に向ける |
+| `make smoke` | ローカル / 実機相手のスモークテスト ( scripts/sunabar-smoke.sh ) |
+| `make status` | 振込 / Outbox の状態スナップショット ( 運用補助 ) |
+| `make emergency-stop` | PENDING を一斉 FAILED に倒す緊急停止 ( 確認プロンプト付き ) |
+| `make seed` | scripts/seed.sql を投入 ( 開発用ダミーデータ ) |
 
 ## HTTP API エンドポイント
 
@@ -117,6 +121,7 @@ go-sunabar-payments/
 - [ADR-005 Notification モジュールは event_processed で受信側冪等性を担保する](docs/adr/0005-notification-consumer-idempotency.md)
 - [ADR-006 Relay の分離レベルを READ COMMITTED に固定する](docs/adr/0006-relay-read-committed.md)
 - [ADR-007 時刻は UTC で統一する](docs/adr/0007-store-times-as-utc.md)
+- [ADR-008 sunabar の 5xx と接続エラーはリトライ、 4xx は即 MarkFailed](docs/adr/0008-retry-on-5xx-fail-on-4xx.md)
 
 ## アーキテクチャ図 / シーケンス図
 - [モジュール境界とデータフロー](docs/diagrams/architecture.md)
@@ -125,6 +130,19 @@ go-sunabar-payments/
 
 ## 実機接続
 sunabar / 本番 BaaS への接続手順、 OAuth2 切替方法、 緊急停止手順は [docs/runbook/sunabar-live-connection.md](docs/runbook/sunabar-live-connection.md) を参照してください。 実取引が動く可能性があるため、 必ず人間レビューを挟みます。
+
+## API クライアントコレクション
+- [api/requests.http](api/requests.http) VS Code REST Client や JetBrains の HTTP Client 用
+- [api/postman_collection.json](api/postman_collection.json) Postman / Insomnia 用 ( v2.1.0 )
+
+## 障害ドリル
+M11 で追加した「現場でハマる障害」を再現する統合テストです。
+- 同一 appRequestId の連打 ( 二重 Transfer 抑止 )
+- sunabar 5xx 一時障害 ( バックオフ後の自動復旧 )
+- 緊急停止 ( PENDING -> FAILED 一斉切替後の dispatch 抑制と手動復旧 )
+- アクセストークン失効 ( 4xx 即 MarkFailed )
+
+`make test-integration` でドリルも含めて全件通ります。
 
 ## ライセンス
 MIT
