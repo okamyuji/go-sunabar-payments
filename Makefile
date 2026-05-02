@@ -1,10 +1,11 @@
-.PHONY: help fmt vet lint staticcheck test test-unit test-integration build \
+.PHONY: help fmt fmt-check vet lint staticcheck test test-unit test-integration build \
         run-api run-relay run-reconciler \
         migrate-up migrate-down compose-up compose-down install-hooks ci-check \
         smoke status emergency-stop seed
 
 GO          := go
 GOFLAGS     := -mod=readonly
+export GOTOOLCHAIN ?= go1.25.0
 DB_HOST     ?= 127.0.0.1
 DB_PORT     ?= 3306
 DB_USER     ?= app
@@ -18,6 +19,9 @@ help: ## ヘルプ表示
 
 fmt: ## go fmt 全実行
 	$(GO) fmt ./...
+
+fmt-check: ## CI と同じ gofmt 差分チェック
+	@test -z "$$(gofmt -l .)" || (echo "gofmt diff:"; gofmt -l .; exit 1)
 
 vet: ## go vet 全実行
 	$(GO) vet ./...
@@ -33,8 +37,8 @@ test: test-unit ## デフォルトはユニットテスト
 test-unit: ## ユニットテスト実行 ( -race -shuffle=on -count=1 )
 	$(GO) test $(GOFLAGS) -short -race -shuffle=on -count=1 ./...
 
-test-integration: ## 統合テスト実行 ( Docker 必須、 共有 DB のため -p 1 で逐次 )
-	$(GO) test $(GOFLAGS) -race -shuffle=on -count=1 -p 1 -tags=integration -timeout=10m ./...
+test-integration: ## CI と同じ統合テスト実行 ( Docker / MySQL 必須 )
+	$(GO) test $(GOFLAGS) -race -shuffle=on -count=1 -tags=integration -timeout=10m ./...
 
 build: ## 全バイナリをビルド
 	$(GO) build -o bin/api ./cmd/api
@@ -69,10 +73,11 @@ install-hooks: ## .githooks を git のフックパスに登録
 	git config core.hooksPath .githooks
 	chmod +x .githooks/pre-commit
 
-ci-check: fmt vet staticcheck ## CI と同等のチェック ( lint + build + test )
+ci-check: fmt-check vet staticcheck ## CI と同等のフルチェック
 	golangci-lint run ./...
 	$(GO) build ./...
 	$(GO) test $(GOFLAGS) -short -race -shuffle=on -count=1 ./...
+	$(GO) test $(GOFLAGS) -race -shuffle=on -count=1 -tags=integration -timeout=10m ./...
 
 smoke: ## モック / 実機相手のスモークテスト ( API_BASE で切替 )
 	bash scripts/sunabar-smoke.sh

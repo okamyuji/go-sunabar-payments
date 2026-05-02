@@ -183,7 +183,9 @@ func postTransfer(t *testing.T, srv *httptest.Server, appReqID string, amount in
 		raw, _ := io.ReadAll(res.Body)
 		t.Fatalf("status = %d body=%s", res.StatusCode, raw)
 	}
-	var got struct{ ID string `json:"id"` }
+	var got struct {
+		ID string `json:"id"`
+	}
 	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -425,4 +427,3 @@ func TestDrill_TokenExpiredImmediatelyMarksTransferFailed(t *testing.T) {
 		t.Errorf("outbox status = %s, want SENT", status)
 	}
 }
-

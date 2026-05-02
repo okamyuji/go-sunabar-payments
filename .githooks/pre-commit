@@ -1,40 +1,37 @@
 #!/usr/bin/env bash
-# pre-commit go fmt / go vet / staticcheck / golangci-lint / go build / go test を直列実行する。
+# CI と同じチェックを commit 前に直列実行する。
 # make install-hooks で git config core.hooksPath を .githooks に向ける。
 set -euo pipefail
 
 ROOT_DIR="$(git rev-parse --show-toplevel)"
 cd "$ROOT_DIR"
 
-echo "[pre-commit] gofmt check"
+export GOTOOLCHAIN="${GOTOOLCHAIN:-go1.25.0}"
+
+echo "[pre-commit] go fmt check"
 GOFMT_OUT="$(gofmt -l .)"
 if [ -n "$GOFMT_OUT" ]; then
-    echo "gofmt が必要なファイルがあります"
-    echo "$GOFMT_OUT"
-    exit 1
+	echo "gofmt diff:"
+	echo "$GOFMT_OUT"
+	exit 1
 fi
 
 echo "[pre-commit] go vet"
 go vet ./...
 
-if command -v staticcheck >/dev/null 2>&1; then
-    echo "[pre-commit] staticcheck"
-    staticcheck ./...
-else
-    echo "[pre-commit] staticcheck が見つからないためスキップします ( go install honnef.co/go/tools/cmd/staticcheck@latest を推奨 )"
-fi
+echo "[pre-commit] staticcheck"
+staticcheck ./...
 
-if command -v golangci-lint >/dev/null 2>&1; then
-    echo "[pre-commit] golangci-lint"
-    golangci-lint run ./...
-else
-    echo "[pre-commit] golangci-lint が見つからないためスキップします"
-fi
+echo "[pre-commit] golangci-lint"
+golangci-lint run ./...
 
 echo "[pre-commit] go build"
 go build ./...
 
 echo "[pre-commit] go test ( short race shuffle )"
 go test -short -race -shuffle=on -count=1 ./...
+
+echo "[pre-commit] go test ( integration )"
+go test -race -shuffle=on -count=1 -tags=integration -timeout=10m ./...
 
 echo "[pre-commit] OK"

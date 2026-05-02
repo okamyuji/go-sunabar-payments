@@ -49,10 +49,13 @@ make test
 make test-integration
 ```
 
+`make install-hooks` 後の pre-commit は CI と同じ Go 1.25 toolchain で lint / build / test / integration test を実行します。 初回は Go toolchain の取得で時間がかかる場合があります。
+
 ## 開発コマンド
 | コマンド | 内容 |
 | --- | --- |
 | `make fmt` | go fmt ./... |
+| `make fmt-check` | CI と同じ gofmt 差分チェック |
 | `make vet` | go vet ./... |
 | `make staticcheck` | staticcheck 単独実行 |
 | `make lint` | fmt / vet / staticcheck / golangci-lint をまとめて実行 |
@@ -62,7 +65,7 @@ make test-integration
 | `make run-api` / `make run-relay` / `make run-reconciler` | 各プロセスの起動 |
 | `make migrate-up` / `make migrate-down` | golang-migrate の操作 |
 | `make compose-up` / `make compose-down` | ローカル MySQL 起動 / 停止 |
-| `make install-hooks` | core.hooksPath を .githooks に向ける |
+| `make install-hooks` | core.hooksPath を .githooks に向け、 commit 前に CI と同じチェックを実行する |
 | `make smoke` | ローカル / 実機相手のスモークテスト ( scripts/sunabar-smoke.sh ) |
 | `make status` | 振込 / Outbox の状態スナップショット ( 運用補助 ) |
 | `make emergency-stop` | PENDING を一斉 FAILED に倒す緊急停止 ( 確認プロンプト付き ) |
