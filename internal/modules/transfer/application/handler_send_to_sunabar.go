@@ -17,12 +17,14 @@ import (
 // 成功なら Transfer を REQUESTED に遷移させ、 TransferAcceptedToBank と TransferStatusCheckScheduled を発行する。
 // 失敗なら Transfer を FAILED に遷移させ、 TransferFailed を発行する。
 type SendToSunabarHandler struct {
-	txMgr  transaction.Manager
-	repo   Repository
-	outbox outbox.Publisher
-	client sunabar.Client
-	idGen  IDGenerator
-	now    func() time.Time
+	txMgr          transaction.Manager
+	repo           Repository
+	outbox         outbox.Publisher
+	client         sunabar.Client
+	circuitBreaker CircuitBreaker
+	idGen          IDGenerator
+	now            func() time.Time
+	gatewayTimeout time.Duration
 }
 
 // NewSendToSunabarHandler ハンドラを生成する。
@@ -34,10 +36,35 @@ func NewSendToSunabarHandler(
 	idGen IDGenerator,
 	now func() time.Time,
 ) *SendToSunabarHandler {
+	return NewSendToSunabarHandlerWithCircuitBreaker(txMgr, repo, pub, client, idGen, now, nil)
+}
+
+// NewSendToSunabarHandlerWithCircuitBreaker circuit breaker を指定してハンドラを生成する。
+func NewSendToSunabarHandlerWithCircuitBreaker(
+	txMgr transaction.Manager,
+	repo Repository,
+	pub outbox.Publisher,
+	client sunabar.Client,
+	idGen IDGenerator,
+	now func() time.Time,
+	breaker CircuitBreaker,
+) *SendToSunabarHandler {
 	if now == nil {
 		now = time.Now
 	}
-	return &SendToSunabarHandler{txMgr: txMgr, repo: repo, outbox: pub, client: client, idGen: idGen, now: now}
+	if breaker == nil {
+		breaker = NewCircuitBreaker(DefaultCircuitBreakerConfig())
+	}
+	return &SendToSunabarHandler{
+		txMgr:          txMgr,
+		repo:           repo,
+		outbox:         pub,
+		client:         client,
+		circuitBreaker: breaker,
+		idGen:          idGen,
+		now:            now,
+		gatewayTimeout: 5 * time.Second,
+	}
 }
 
 // Handle 1 イベントを処理する。
@@ -57,7 +84,15 @@ func (h *SendToSunabarHandler) Handle(ctx context.Context, evt outbox.Event) err
 		return nil
 	}
 
-	res, apiErr := h.client.RequestTransfer(ctx, sunabar.TransferRequest{
+	now := h.now()
+	if err := h.circuitBreaker.Allow(now); err != nil {
+		return err
+	}
+
+	callCtx, cancel := context.WithTimeout(ctx, h.gatewayTimeout)
+	defer cancel()
+
+	res, apiErr := h.client.RequestTransfer(callCtx, sunabar.TransferRequest{
 		IdempotencyKey:  t.APIIdempotencyKey,
 		SourceAccountID: t.SourceAccountID,
 		Amount:          t.Amount,
@@ -72,8 +107,10 @@ func (h *SendToSunabarHandler) Handle(ctx context.Context, evt outbox.Event) err
 	// 5xx / 接続エラーはリトライ可能なのでハンドラ自身がエラーを返し、 Relay に再投入させる。
 	// 4xx はクライアント側の不具合なので即 MarkFailed に倒す ( ADR-008 ) 。
 	if apiErr != nil && isRetryable(apiErr) {
+		h.circuitBreaker.RecordFailure(h.now())
 		return apiErr
 	}
+	h.circuitBreaker.RecordSuccess(h.now())
 
 	return h.txMgr.Do(ctx, func(ctx context.Context, tx transaction.Tx) error {
 		now := h.now()

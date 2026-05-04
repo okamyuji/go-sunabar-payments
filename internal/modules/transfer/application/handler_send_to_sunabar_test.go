@@ -3,6 +3,7 @@ package application_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -152,6 +153,72 @@ func TestSendToSunabar_ServerErrorRetries(t *testing.T) {
 	}
 	if len(pub.Events()) != 0 {
 		t.Errorf("events = %d, want 0 ( 5xx はイベント発行なし ) ", len(pub.Events()))
+	}
+}
+
+func TestSendToSunabar_CircuitBreakerOpensAfterRetryableFailures(t *testing.T) {
+	t.Parallel()
+	repo := newInMemoryRepo()
+	pub := newInMemoryPublisher()
+	idGen := &fakeIDGen{}
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	tr := seedPendingTransfer(t, repo, "transfer-cb", "app-cb")
+	stub := &stubSunabarClient{
+		requestFn: func(_ context.Context, _ sunabar.TransferRequest) (*sunabar.TransferResult, error) {
+			return nil, &sunabar.APIError{StatusCode: 503, RawBody: `{"error":"upstream busy"}`}
+		},
+	}
+	cb := application.NewCircuitBreaker(application.CircuitBreakerConfig{
+		FailureThreshold: 3,
+		ResetTimeout:     30 * time.Second,
+	})
+
+	h := application.NewSendToSunabarHandlerWithCircuitBreaker(
+		fakeTxManager{}, repo, pub, stub, idGen, func() time.Time { return now }, cb,
+	)
+	for i := 0; i < 3; i++ {
+		err := h.Handle(context.Background(), makeRequestedEvent(t, "transfer-cb", tr.APIIdempotencyKey))
+		if err == nil {
+			t.Fatalf("Handle failure %d err = nil, want retryable error", i+1)
+		}
+	}
+
+	err := h.Handle(context.Background(), makeRequestedEvent(t, "transfer-cb", tr.APIIdempotencyKey))
+	if !errors.Is(err, application.ErrCircuitOpen) {
+		t.Fatalf("Handle after threshold = %v, want ErrCircuitOpen", err)
+	}
+	if got := stub.requestN.Load(); got != 3 {
+		t.Errorf("RequestTransfer calls = %d, want 3 ( open circuit rejects before gateway call )", got)
+	}
+}
+
+func TestSendToSunabar_CircuitBreakerDoesNotCountClientErrors(t *testing.T) {
+	t.Parallel()
+	repo := newInMemoryRepo()
+	pub := newInMemoryPublisher()
+	idGen := &fakeIDGen{}
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	tr := seedPendingTransfer(t, repo, "transfer-cb-4xx", "app-cb-4xx")
+	stub := &stubSunabarClient{
+		requestFn: func(_ context.Context, _ sunabar.TransferRequest) (*sunabar.TransferResult, error) {
+			return nil, &sunabar.APIError{StatusCode: 400, RawBody: `{"error":"bad request"}`}
+		},
+	}
+	cb := application.NewCircuitBreaker(application.CircuitBreakerConfig{
+		FailureThreshold: 1,
+		ResetTimeout:     30 * time.Second,
+	})
+
+	h := application.NewSendToSunabarHandlerWithCircuitBreaker(
+		fakeTxManager{}, repo, pub, stub, idGen, func() time.Time { return now }, cb,
+	)
+	if err := h.Handle(context.Background(), makeRequestedEvent(t, "transfer-cb-4xx", tr.APIIdempotencyKey)); err != nil {
+		t.Fatalf("Handle 4xx: %v", err)
+	}
+	if err := cb.Allow(now); err != nil {
+		t.Fatalf("circuit should remain closed after 4xx: %v", err)
 	}
 }
 
