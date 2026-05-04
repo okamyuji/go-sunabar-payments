@@ -70,6 +70,7 @@ compose-down-clean: ## Docker Compose を停止しボリュームも削除
 	docker compose down -v
 
 install-hooks: ## .githooks を git のフックパスに登録
+	@command -v gitleaks >/dev/null || (echo "gitleaks is required. Install it with: brew install gitleaks"; exit 1)
 	git config core.hooksPath .githooks
 	chmod +x .githooks/pre-commit
 

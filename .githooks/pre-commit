@@ -8,6 +8,13 @@ cd "$ROOT_DIR"
 
 export GOTOOLCHAIN="${GOTOOLCHAIN:-go1.25.0}"
 
+echo "[pre-commit] gitleaks staged scan"
+if ! command -v gitleaks >/dev/null 2>&1; then
+	echo "gitleaks is required. Install it with: brew install gitleaks"
+	exit 1
+fi
+gitleaks git --staged --redact --no-banner
+
 echo "[pre-commit] go fmt check"
 GOFMT_OUT="$(gofmt -l .)"
 if [ -n "$GOFMT_OUT" ]; then
