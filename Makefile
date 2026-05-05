@@ -1,6 +1,6 @@
 .PHONY: help fmt fmt-check vet lint staticcheck test test-unit test-integration build \
         run-api run-relay run-reconciler \
-        migrate-up migrate-down compose-up compose-down install-hooks ci-check \
+        migrate-up migrate-down compose-up compose-down install-hooks ci-tooling-check ci-check \
         smoke status emergency-stop seed
 
 GO          := go
@@ -31,6 +31,9 @@ staticcheck: ## staticcheck 単独実行
 
 lint: fmt vet staticcheck ## fmt と vet と staticcheck と golangci-lint を直列実行
 	golangci-lint run ./...
+
+ci-tooling-check: ## CI ツール設定の互換性チェック
+	bash scripts/check-ci-tooling.sh
 
 test: test-unit ## デフォルトはユニットテスト
 
@@ -74,7 +77,7 @@ install-hooks: ## .githooks を git のフックパスに登録
 	git config core.hooksPath .githooks
 	chmod +x .githooks/pre-commit
 
-ci-check: fmt-check vet staticcheck ## CI と同等のフルチェック
+ci-check: ci-tooling-check fmt-check vet staticcheck ## CI と同等のフルチェック
 	golangci-lint run ./...
 	$(GO) build ./...
 	$(GO) test $(GOFLAGS) -short -race -shuffle=on -count=1 ./...

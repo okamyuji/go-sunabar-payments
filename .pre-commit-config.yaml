@@ -4,3 +4,11 @@ repos:
     hooks:
       - id: gitleaks
         args: ["--redact", "--no-banner"]
+  - repo: local
+    hooks:
+      - id: ci-tooling-check
+        name: CI tooling compatibility
+        entry: bash scripts/check-ci-tooling.sh
+        language: system
+        pass_filenames: false
+        files: ^(\.github/workflows/ci\.yml|scripts/check-ci-tooling\.sh|\.pre-commit-config\.yaml|\.githooks/pre-commit|Makefile)$

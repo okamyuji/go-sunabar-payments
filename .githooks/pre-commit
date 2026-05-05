@@ -15,6 +15,9 @@ if ! command -v gitleaks >/dev/null 2>&1; then
 fi
 gitleaks git --staged --redact --no-banner
 
+echo "[pre-commit] CI tooling compatibility"
+bash scripts/check-ci-tooling.sh
+
 echo "[pre-commit] go fmt check"
 GOFMT_OUT="$(gofmt -l .)"
 if [ -n "$GOFMT_OUT" ]; then
