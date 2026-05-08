@@ -1,0 +1,12 @@
+# Local state files (never commit)
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+*.tfstate
+*.tfstate.*
+crash.log
+
+# tfvars: 機密値は置かない方針だが、 念のため tracking 除外
+*.tfvars
+*.tfvars.json
