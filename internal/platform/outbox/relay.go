@@ -11,6 +11,15 @@ import (
 	"time"
 )
 
+// ErrSkipAttempt は Handler が「再投入は望むが attempt_count は増やさないでほしい」 と Relay に伝えるための
+// sentinel エラー。 例えば circuit breaker が OPEN で外部呼び出し自体が起きていないケース。
+// errors.Is(err, outbox.ErrSkipAttempt) で識別する。
+var ErrSkipAttempt = errors.New("outbox: skip attempt count")
+
+// skipAttemptBackoff ErrSkipAttempt 時の再投入遅延。 通常の指数バックオフより短く、
+// circuit breaker の reset timeout より十分小さくして HALF_OPEN 復帰を素早く拾う。
+const skipAttemptBackoff = 5 * time.Second
+
 // RelayConfig Relay の動作パラメータ。
 type RelayConfig struct {
 	// PollInterval ポーリング間隔。 0 以下なら 2 秒に補正される。
@@ -180,6 +189,19 @@ func (r *Relay) dispatch(ctx context.Context, tx *sql.Tx, e Event, attempt int) 
 		if _, err := tx.ExecContext(ctx, upd, r.now().UTC(), e.ID); err != nil {
 			r.logger.Error("relay mark sent failed", "event_id", e.ID, "err", err)
 		}
+		return
+	}
+
+	// Handler が ErrSkipAttempt を返した場合は attempt_count を増やさず再投入する。
+	// 外部呼び出しが circuit breaker の OPEN で実際には行われていないケースなど、
+	// 再試行予算 ( MaxAttempt ) を消費すべきでない場合に使う。
+	if errors.Is(handleErr, ErrSkipAttempt) {
+		const skipQ = `UPDATE outbox_events SET last_error=?, next_attempt_at=?
+			WHERE id=? AND status='PENDING'`
+		if _, err := tx.ExecContext(ctx, skipQ, handleErr.Error(), r.now().UTC().Add(skipAttemptBackoff), e.ID); err != nil {
+			r.logger.Error("relay skip-attempt update failed", "event_id", e.ID, "err", err)
+		}
+		r.logger.Warn("relay skipped attempt", "event_id", e.ID, "err", handleErr)
 		return
 	}
 

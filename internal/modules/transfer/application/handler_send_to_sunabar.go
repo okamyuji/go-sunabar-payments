@@ -86,7 +86,9 @@ func (h *SendToSunabarHandler) Handle(ctx context.Context, evt outbox.Event) err
 
 	now := h.now()
 	if err := h.circuitBreaker.Allow(now); err != nil {
-		return err
+		// 外部呼び出しが行われていないため Outbox の attempt_count を消費させない。
+		// Relay は ErrSkipAttempt を識別して短い遅延で再投入する ( HALF_OPEN 復帰を素早く拾う ) 。
+		return fmt.Errorf("%w: %w", outbox.ErrSkipAttempt, err)
 	}
 
 	callCtx, cancel := context.WithTimeout(ctx, h.gatewayTimeout)

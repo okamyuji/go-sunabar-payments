@@ -104,6 +104,50 @@ func TestRelay_DispatchesPendingToHandler(t *testing.T) {
 	}
 }
 
+// TestRelay_SkipAttempt_DoesNotIncrementAttemptCount Handler が outbox.ErrSkipAttempt を返した場合、
+// attempt_count を増やさず last_error と next_attempt_at だけを更新する。 circuit breaker OPEN 中の
+// 再試行で MaxAttempt を消費しないことを保証するために重要。
+func TestRelay_SkipAttempt_DoesNotIncrementAttemptCount(t *testing.T) {
+	db := setupMySQL(t)
+
+	t0 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	relayNow := t0.Add(time.Hour)
+	id := insertPendingEventAt(t, db, "TransferRequested", t0)
+
+	r := outbox.NewRelay(db, outbox.RelayConfig{BatchSize: 10, MaxAttempt: 5, Consumer: "test"}, silentLogger())
+	r.SetClock(func() time.Time { return relayNow })
+	r.Register("TransferRequested", outbox.HandlerFunc(func(ctx context.Context, e outbox.Event) error {
+		return outbox.ErrSkipAttempt
+	}))
+
+	if err := r.ProcessBatch(context.Background()); err != nil {
+		t.Fatalf("ProcessBatch: %v", err)
+	}
+
+	var (
+		status  string
+		attempt int
+		nextAt  time.Time
+		lastErr sql.NullString
+	)
+	if err := db.QueryRow(`SELECT status, attempt_count, next_attempt_at, last_error FROM outbox_events WHERE id=?`, id).
+		Scan(&status, &attempt, &nextAt, &lastErr); err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if status != "PENDING" {
+		t.Errorf("status = %q, want PENDING", status)
+	}
+	if attempt != 0 {
+		t.Errorf("attempt_count = %d, want 0 ( ErrSkipAttempt は attempt を増やさない ) ", attempt)
+	}
+	if !nextAt.After(relayNow) {
+		t.Errorf("next_attempt_at = %v は %v より未来になっているべき", nextAt, relayNow)
+	}
+	if !lastErr.Valid || lastErr.String == "" {
+		t.Errorf("last_error が空")
+	}
+}
+
 func TestRelay_BackoffOnHandlerError(t *testing.T) {
 	db := setupMySQL(t)
 

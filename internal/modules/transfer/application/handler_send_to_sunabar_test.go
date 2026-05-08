@@ -13,6 +13,42 @@ import (
 	"go-sunabar-payments/internal/platform/sunabar"
 )
 
+// TestSendToSunabar_CircuitOpen_WrapsWithSkipAttempt circuit OPEN 由来のエラーは
+// outbox.ErrSkipAttempt でラップされ、 Relay 側で attempt_count を消費しないようにする。
+func TestSendToSunabar_CircuitOpen_WrapsWithSkipAttempt(t *testing.T) {
+	t.Parallel()
+	repo := newInMemoryRepo()
+	pub := newInMemoryPublisher()
+	idGen := &fakeIDGen{}
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	tr := seedPendingTransfer(t, repo, "transfer-skip", "app-skip")
+	stub := &stubSunabarClient{
+		requestFn: func(_ context.Context, _ sunabar.TransferRequest) (*sunabar.TransferResult, error) {
+			return nil, &sunabar.APIError{StatusCode: 503, RawBody: `{"error":"upstream busy"}`}
+		},
+	}
+	cb := application.NewCircuitBreaker(application.CircuitBreakerConfig{
+		FailureThreshold: 1,
+		ResetTimeout:     30 * time.Second,
+	})
+	h := application.NewSendToSunabarHandlerWithCircuitBreaker(
+		fakeTxManager{}, repo, pub, stub, idGen, func() time.Time { return now }, cb,
+	)
+	// 1 回失敗で OPEN にする。
+	if err := h.Handle(context.Background(), makeRequestedEvent(t, "transfer-skip", tr.APIIdempotencyKey)); err == nil {
+		t.Fatalf("first 5xx Handle err = nil, want non-nil")
+	}
+	// 2 回目は circuit OPEN によって即拒否される。 ErrSkipAttempt と ErrCircuitOpen の両方を含むはず。
+	err := h.Handle(context.Background(), makeRequestedEvent(t, "transfer-skip", tr.APIIdempotencyKey))
+	if !errors.Is(err, outbox.ErrSkipAttempt) {
+		t.Errorf("err missing outbox.ErrSkipAttempt: %v", err)
+	}
+	if !errors.Is(err, application.ErrCircuitOpen) {
+		t.Errorf("err missing application.ErrCircuitOpen: %v", err)
+	}
+}
+
 func seedPendingTransfer(t *testing.T, repo *inMemoryRepo, transferID, appReq string) *domain.Transfer {
 	t.Helper()
 	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
