@@ -76,10 +76,18 @@ func (u *GetBalanceUseCase) Execute(ctx context.Context, accountID string) (*dom
 	}, nil
 }
 
-// IssueVirtualAccountCommand バーチャル口座発行のリクエスト。
+// IssueVirtualAccountCommand バーチャル口座発行のコマンド。
+// sunabar 実 API は法人 API 専用の /corporation/v1/va/issue を使うため、
+// raId / vaTypeCode / vaHolderNameKana 等のフィールドが必要。
 type IssueVirtualAccountCommand struct {
-	Memo      string
-	ExpiresOn *time.Time
+	Memo              string     // アプリ側のメモ ( DB に保存 )
+	ExpiresOn         *time.Time // アプリ側の有効期限 ( sunabar API 側には現状送らない )
+	RaID              string     // 親契約 ID ( sunabar VA 契約から取得した raId )
+	VaTypeCode        string     // 任意 ( 既定 "2" )
+	IssueRequestCount string     // 任意 ( 既定 "1" )
+	VaContractAuthKey string     // 任意 ( VA 契約承認キー )
+	VaHolderNameKana  string     // 半角カナの口座名義
+	VaHolderNamePos   string     // 任意 ( 既定 "1" )
 }
 
 // IssueVirtualAccountUseCase バーチャル口座を sunabar で発行し、 アプリ DB に登録する。
@@ -104,7 +112,16 @@ func NewIssueVirtualAccountUseCase(txMgr transaction.Manager, repo VirtualAccoun
 // 同じ idempotency_key で再実行すれば同じバーチャル口座を取得できる。
 func (u *IssueVirtualAccountUseCase) Execute(ctx context.Context, cmd IssueVirtualAccountCommand) (*domain.VirtualAccount, error) {
 	idemKey := u.idGen.NewIdempotencyKey()
-	req := sunabar.VirtualAccountRequest{IdempotencyKey: idemKey, Memo: cmd.Memo}
+	req := sunabar.VirtualAccountRequest{
+		IdempotencyKey:    idemKey,
+		Memo:              cmd.Memo,
+		RaID:              cmd.RaID,
+		VaTypeCode:        cmd.VaTypeCode,
+		IssueRequestCount: cmd.IssueRequestCount,
+		VaContractAuthKey: cmd.VaContractAuthKey,
+		VaHolderNameKana:  cmd.VaHolderNameKana,
+		VaHolderNamePos:   cmd.VaHolderNamePos,
+	}
 	if cmd.ExpiresOn != nil {
 		req.ExpiresOn = *cmd.ExpiresOn
 	}

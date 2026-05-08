@@ -48,7 +48,17 @@ func run(logger *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	client, err := sunabar.NewHTTPClient(sunabar.HTTPClientConfig{BaseURL: baseURL, Auth: auth})
+
+	// 法人 API ( /corporation/v1/* ) 向けトークンは任意。 設定時のみ VA 発行などが有効になる。
+	cfg := sunabar.HTTPClientConfig{BaseURL: baseURL, Auth: auth}
+	if corpToken := os.Getenv("SUNABAR_ACCESS_TOKEN_CORPORATE"); corpToken != "" {
+		corpAuth, err := sunabar.NewStaticTokenSource(corpToken)
+		if err != nil {
+			return err
+		}
+		cfg.CorporateAuth = corpAuth
+	}
+	client, err := sunabar.NewHTTPClient(cfg)
 	if err != nil {
 		return err
 	}

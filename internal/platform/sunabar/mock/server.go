@@ -6,6 +6,7 @@ package mock
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -72,11 +73,13 @@ func NewServer(opts ...Option) *Server {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/personal/v1/accounts", s.handleAccounts)
-	mux.HandleFunc("/personal/v1/accounts/balance", s.handleBalance)
+	// 実 sunabar API のパス形に揃える。
+	mux.HandleFunc("/personal/v1/accounts/balances", s.handleBalance)
 	mux.HandleFunc("/personal/v1/accounts/transactions", s.handleTransactions)
-	mux.HandleFunc("/personal/v1/transfers", s.handleTransfer)
-	mux.HandleFunc("/personal/v1/transfers/status", s.handleTransferStatus)
-	mux.HandleFunc("/personal/v1/virtual-accounts", s.handleVirtualAccount)
+	mux.HandleFunc("/personal/v1/transfer/request", s.handleTransfer)
+	mux.HandleFunc("/personal/v1/transfer/status", s.handleTransferStatus)
+	// VA は法人 API 専用。
+	mux.HandleFunc("/corporation/v1/va/issue", s.handleVirtualAccount)
 
 	if s.listener != nil {
 		hs := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
@@ -123,7 +126,8 @@ func (s *Server) handleAccounts(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleBalance GET /personal/v1/accounts/balance?accountId=... 。
+// handleBalance GET /personal/v1/accounts/balances?accountId=... 。
+// 実 sunabar API のレスポンス形 ( balances 配列 + 文字列の数値 ) に揃える。
 func (s *Server) handleBalance(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -136,15 +140,21 @@ func (s *Server) handleBalance(w http.ResponseWriter, r *http.Request) {
 	}
 	now := s.now()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"accountId":    id,
-		"currencyCode": "JPY",
-		"balance":      1000000,
-		"baseDate":     now.Format("2006-01-02"),
-		"baseTime":     now.Format("15:04:05"),
+		"balances": []map[string]any{
+			{
+				"accountId":    id,
+				"currencyCode": "JPY",
+				"balance":      "1000000",
+				"baseDate":     now.Format("2006-01-02"),
+				"baseTime":     now.Format("15:04:05"),
+			},
+		},
+		"spAccountBalances": []any{},
 	})
 }
 
-// handleTransactions GET /personal/v1/accounts/transactions?accountId=...&from=...&to=... 。
+// handleTransactions GET /personal/v1/accounts/transactions?accountId=...&dateFrom=...&dateTo=... 。
+// 実 sunabar API のクエリパラメータ名 ( dateFrom/dateTo ) と string 化された数値レスポンスに揃える。
 func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -161,15 +171,15 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 		"currencyCode": "JPY",
 		"baseDate":     now.Format("2006-01-02"),
 		"baseTime":     now.Format("15:04:05"),
-		"hasNext":      false,
-		"count":        1,
+		"hasNext":      "false",
+		"count":        "1",
 		"transactions": []map[string]any{
 			{
 				"transactionDate": now.Format("2006-01-02"),
 				"valueDate":       now.Format("2006-01-02"),
 				"transactionType": "credit",
-				"amount":          10000,
-				"balance":         1010000,
+				"amount":          "10000",
+				"balance":         "1010000",
 				"remarks":         "TEST DEPOSIT",
 				"itemKey":         "ITEM-0001",
 			},
@@ -177,8 +187,9 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleTransfer POST /personal/v1/transfers 。
-// x-idempotency-key ヘッダを必須とし、 同じキーの再送には同じ ApplyNo を返す。
+// handleTransfer POST /personal/v1/transfer/request 。
+// 実 sunabar API の bulk-shape ボディ ( accountId, transferDesignatedDate, transfers[] ) を受け、
+// 1 件目の transferAmount で stored 状態を作る。 x-idempotency-key で再送は同じ ApplyNo を返す。
 func (s *Server) handleTransfer(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -190,13 +201,21 @@ func (s *Server) handleTransfer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Amount int64 `json:"amount"`
+		AccountID string `json:"accountId"`
+		Transfers []struct {
+			TransferAmount string `json:"transferAmount"`
+		} `json:"transfers"`
 	}
 	if r.ContentLength > 0 {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
 			writeError(w, http.StatusBadRequest, "invalid body")
 			return
 		}
+	}
+	var amount int64
+	if len(body.Transfers) > 0 {
+		// mock は厳密なパースが目的ではないので、 失敗時は 0 にフォールバック。
+		_, _ = fmt.Sscanf(body.Transfers[0].TransferAmount, "%d", &amount)
 	}
 
 	s.mu.Lock()
@@ -220,7 +239,7 @@ func (s *Server) handleTransfer(w http.ResponseWriter, r *http.Request) {
 	st := &storedTransfer{
 		ApplyNo:        applyNo,
 		IdempotencyKey: idem,
-		Amount:         body.Amount,
+		Amount:         amount,
 		Status:         "AcceptedToBank",
 		StatusDetail:   "受付完了",
 		AcceptedAt:     now,
@@ -279,7 +298,8 @@ func (s *Server) handleTransferStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleVirtualAccount POST /personal/v1/virtual-accounts 。
+// handleVirtualAccount POST /corporation/v1/va/issue 。
+// 実 sunabar API のレスポンス形 ( issuedVaList 配列 ) に合わせる。
 func (s *Server) handleVirtualAccount(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -291,11 +311,21 @@ func (s *Server) handleVirtualAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := s.now()
-	expires := now.AddDate(0, 6, 0)
+	suffix := idem
+	if len(suffix) > 8 {
+		suffix = suffix[:8]
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"virtualAccountId": "VA-" + idem,
-		"branchCode":       "001",
-		"accountNumber":    "9876543",
-		"expiresOn":        expires.Format("2006-01-02"),
+		"vaTypeCode":       "2",
+		"vaTypeName":       "継続型",
+		"vaHolderNameKana": "ﾃｽﾄ",
+		"vaList": []map[string]any{
+			{
+				"vaId":            "VA-" + suffix,
+				"vaBranchCode":    "001",
+				"vaAccountNumber": "9876543",
+			},
+		},
 	})
+	_ = now
 }

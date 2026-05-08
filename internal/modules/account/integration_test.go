@@ -138,7 +138,15 @@ func newAccountModule(t *testing.T, db *sql.DB) *account.Module {
 	if err != nil {
 		t.Fatalf("auth: %v", err)
 	}
-	client, err := sunabar.NewHTTPClient(sunabar.HTTPClientConfig{BaseURL: mock.URL, Auth: auth})
+	corpAuth, err := sunabar.NewStaticTokenSource("test-token-corp")
+	if err != nil {
+		t.Fatalf("corp auth: %v", err)
+	}
+	client, err := sunabar.NewHTTPClient(sunabar.HTTPClientConfig{
+		BaseURL:       mock.URL,
+		Auth:          auth,
+		CorporateAuth: corpAuth,
+	})
 	if err != nil {
 		t.Fatalf("client: %v", err)
 	}

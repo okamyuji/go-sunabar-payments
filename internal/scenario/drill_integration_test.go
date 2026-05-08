@@ -240,7 +240,7 @@ func TestDrill_TransientServerErrorRecoversWithBackoff(t *testing.T) {
 	mock := mocksunabar.NewServer()
 	t.Cleanup(mock.Close)
 	flaky := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/personal/v1/transfers" && r.Method == http.MethodPost && failCount.Load() > 0 {
+		if r.URL.Path == "/personal/v1/transfer/request" && r.Method == http.MethodPost && failCount.Load() > 0 {
 			failCount.Add(-1)
 			w.WriteHeader(http.StatusInternalServerError)
 			_, _ = w.Write([]byte(`{"error":"upstream busy"}`))

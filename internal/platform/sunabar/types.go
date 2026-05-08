@@ -81,10 +81,18 @@ type TransferStatusResult struct {
 }
 
 // VirtualAccountRequest バーチャル口座発行リクエスト。
+// sunabar の VA 発行は法人 API 専用 ( /corporation/v1/va/issue ) で、 raId / vaTypeCode 等の
+// 業務パラメータが必要なため、 上位呼び出し側から渡す前提とする。
 type VirtualAccountRequest struct {
-	IdempotencyKey string
-	Memo           string
-	ExpiresOn      time.Time
+	IdempotencyKey    string
+	Memo              string    // アプリ側のメモ ( DB に保存するだけで sunabar には送らない )
+	ExpiresOn         time.Time // 有効期限 ( アプリ側保存。 sunabar API には現状送らない )
+	VaTypeCode        string    // VA 種別 ( 既定 "2" )
+	IssueRequestCount string    // 発行枚数 ( 既定 "1" )
+	RaID              string    // 親契約 ID ( 必須、 sunabar VA 契約から取得 )
+	VaContractAuthKey string    // VA 契約承認キー ( 必要に応じて )
+	VaHolderNameKana  string    // 半角カナの口座名義
+	VaHolderNamePos   string    // 名義の付与位置コード ( 既定 "1" )
 }
 
 // VirtualAccount バーチャル口座情報。

@@ -115,7 +115,18 @@ func TestRequestTransfer_AuthSourceErrorPropagated(t *testing.T) {
 
 	wantErr := errors.New("auth boom")
 	c := newClient(t, srv.URL, errorAuthSource{err: wantErr})
-	_, err := c.RequestTransfer(context.Background(), sunabar.TransferRequest{IdempotencyKey: "k"})
+	// 入力バリデーションを通過させてから AuthSource 呼び出しでエラーになることを確認する。
+	_, err := c.RequestTransfer(context.Background(), sunabar.TransferRequest{
+		IdempotencyKey:  "k",
+		SourceAccountID: "ACC0001",
+		Amount:          1,
+		DestBankCode:    "0033",
+		DestBranchCode:  "001",
+		DestAccountType: "1",
+		DestAccountNum:  "1234567",
+		DestAccountName: "ﾔﾏﾀﾞ ﾀﾛｳ",
+		TransferDate:    "2026-05-01",
+	})
 	if err == nil || !errors.Is(err, wantErr) {
 		t.Errorf("err = %v, want wraps %v", err, wantErr)
 	}
@@ -208,16 +219,29 @@ func TestGetTransferStatus_AdvancesOnEachPoll(t *testing.T) {
 	}
 }
 
-func TestIssueVirtualAccount_ParsesExpiresOn(t *testing.T) {
+func TestIssueVirtualAccount_ParsesIssuedVaList(t *testing.T) {
 	t.Parallel()
 	srv := mocksvr.NewServer()
 	t.Cleanup(srv.Close)
 
-	c := newClient(t, srv.URL, staticAuth(t))
+	corpAuth, err := sunabar.NewStaticTokenSource("corp-token")
+	if err != nil {
+		t.Fatalf("NewStaticTokenSource: %v", err)
+	}
+	c, err := sunabar.NewHTTPClient(sunabar.HTTPClientConfig{
+		BaseURL:       srv.URL,
+		Auth:          staticAuth(t),
+		CorporateAuth: corpAuth,
+	})
+	if err != nil {
+		t.Fatalf("NewHTTPClient: %v", err)
+	}
 	va, err := c.IssueVirtualAccount(context.Background(), sunabar.VirtualAccountRequest{
-		IdempotencyKey: "va-key-001",
-		Memo:           "memo",
-		ExpiresOn:      time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC),
+		IdempotencyKey:   "va-key-001",
+		Memo:             "memo",
+		RaID:             "RA-TEST-001",
+		VaHolderNameKana: "ﾍﾟｲﾒﾝﾄﾗﾎﾞ",
+		ExpiresOn:        time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatalf("IssueVirtualAccount: %v", err)
@@ -227,5 +251,21 @@ func TestIssueVirtualAccount_ParsesExpiresOn(t *testing.T) {
 	}
 	if va.ExpiresOn.IsZero() {
 		t.Errorf("ExpiresOn ゼロ値")
+	}
+}
+
+func TestIssueVirtualAccount_RequiresCorporateAuth(t *testing.T) {
+	t.Parallel()
+	srv := mocksvr.NewServer()
+	t.Cleanup(srv.Close)
+
+	c := newClient(t, srv.URL, staticAuth(t)) // CorporateAuth 未設定
+	_, err := c.IssueVirtualAccount(context.Background(), sunabar.VirtualAccountRequest{
+		IdempotencyKey:   "va-no-corp",
+		RaID:             "RA",
+		VaHolderNameKana: "ﾍﾟｲﾒﾝﾄﾗﾎﾞ",
+	})
+	if !errors.Is(err, sunabar.ErrNoCorporateAuth) {
+		t.Errorf("err = %v, want ErrNoCorporateAuth", err)
 	}
 }

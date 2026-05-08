@@ -106,17 +106,32 @@ func (h *HTTPHandler) balance(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// issueVA POST /virtual-accounts
+// issueVA POST /virtual-accounts 。 sunabar 法人 API ( /corporation/v1/va/issue ) に対応するため
+// raId / vaTypeCode / vaHolderNameKana 等のフィールドを受け取り、 application.Command に詰め替える。
 func (h *HTTPHandler) issueVA(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Memo      string `json:"memo"`
-		ExpiresOn string `json:"expiresOn,omitempty"`
+		Memo              string `json:"memo"`
+		ExpiresOn         string `json:"expiresOn,omitempty"`
+		RaID              string `json:"raId,omitempty"`
+		VaTypeCode        string `json:"vaTypeCode,omitempty"`
+		IssueRequestCount string `json:"issueRequestCount,omitempty"`
+		VaContractAuthKey string `json:"vaContractAuthKey,omitempty"`
+		VaHolderNameKana  string `json:"vaHolderNameKana,omitempty"`
+		VaHolderNamePos   string `json:"vaHolderNamePos,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid json: " + err.Error()})
 		return
 	}
-	cmd := application.IssueVirtualAccountCommand{Memo: body.Memo}
+	cmd := application.IssueVirtualAccountCommand{
+		Memo:              body.Memo,
+		RaID:              body.RaID,
+		VaTypeCode:        body.VaTypeCode,
+		IssueRequestCount: body.IssueRequestCount,
+		VaContractAuthKey: body.VaContractAuthKey,
+		VaHolderNameKana:  body.VaHolderNameKana,
+		VaHolderNamePos:   body.VaHolderNamePos,
+	}
 	if body.ExpiresOn != "" {
 		t, err := time.Parse("2006-01-02", body.ExpiresOn)
 		if err != nil {
