@@ -1,0 +1,13 @@
+.git
+.github
+.githooks
+.idea
+.vscode
+.DS_Store
+bin/
+.env
+.env.local
+*.log
+docs/
+api/postman_collection.json
+*.md
