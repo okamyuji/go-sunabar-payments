@@ -3,7 +3,8 @@ repos:
     rev: v8.30.1
     hooks:
       - id: gitleaks
-        args: ["--redact", "--no-banner"]
+        # .gitleaks.toml ( allowlist + sunabar 固有ルール ) を必ず読ませる。
+        args: ["--redact", "--no-banner", "--config", ".gitleaks.toml"]
   - repo: local
     hooks:
       - id: ci-tooling-check

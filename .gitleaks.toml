@@ -1,0 +1,45 @@
+# go-sunabar-payments 用 gitleaks 設定
+# 公式デフォルトルールを継承しつつ、 sunabar 固有のトークン形を検出するルールを追加。
+# 参考: Zenn 記事「GitHub に機密情報を push してしまった日のために」 ( okamyuji )
+title = "go-sunabar-payments gitleaks config"
+
+[extend]
+useDefault = true
+
+# sunabar サービスサイトで発行される 32 文字程度の hex / base64 風アクセストークン。
+# 環境変数 SUNABAR_ACCESS_TOKEN / SUNABAR_ACCESS_TOKEN_CORPORATE で扱うため、
+# ソース・テストフィクスチャに直接書かれていたら commit/CI で落とす。
+[[rules]]
+id = "sunabar-access-token"
+description = "sunabar / GMO Aozora BaaS access token in source"
+regex = '''(?i)sunabar[_-]?access[_-]?token["'\s:=]{1,5}[A-Za-z0-9+/=]{24,}'''
+keywords = ["sunabar_access_token", "SUNABAR_ACCESS_TOKEN"]
+secretGroup = 0
+
+# AWS profile / account 情報そのものは秘密ではないが、
+# IAM Access Key ID / Secret Access Key は既定ルールがカバー済み。
+# ここでは GMO あおぞら BaaS の OAuth client credentials も明示的に検出する。
+[[rules]]
+id = "sunabar-oauth-client-secret"
+description = "sunabar BaaS OAuth client secret"
+regex = '''(?i)(sunabar|baas)[_-]?(oauth[_-]?)?client[_-]?secret["'\s:=]{1,5}[A-Za-z0-9_\-]{20,}'''
+keywords = ["sunabar_oauth", "SUNABAR_OAUTH", "baas_client_secret"]
+
+[allowlist]
+description = "テスト用ダミー値や設計ドキュメントの例示は許可する"
+paths = [
+  '''(.*/)?\.gitleaks\.toml$''',
+  '''(.*/)?\.env\.example$''',
+  '''(.*/)?docs/.*\.md$''',
+  '''(.*/)?docs/runbook/.*''',
+  '''(.*/)?api/postman_collection\.json$''',
+  '''(.*/)?internal/platform/sunabar/.*_test\.go$''',
+  '''(.*/)?cmd/mocksunabar/.*''',
+]
+regexes = [
+  # 既定値 / プレースホルダ
+  '''placeholder-token''',
+  '''__set_your_token_from_sunabar_service_site__''',
+  '''test-token''',
+  '''corp-token''',
+]

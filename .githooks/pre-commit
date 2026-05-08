@@ -13,7 +13,8 @@ if ! command -v gitleaks >/dev/null 2>&1; then
 	echo "gitleaks is required. Install it with: brew install gitleaks"
 	exit 1
 fi
-gitleaks git --staged --redact --no-banner
+# .gitleaks.toml ( sunabar 固有ルール + allowlist ) を明示適用。
+gitleaks git --staged --redact --no-banner --config "$ROOT_DIR/.gitleaks.toml"
 
 echo "[pre-commit] CI tooling compatibility"
 bash scripts/check-ci-tooling.sh

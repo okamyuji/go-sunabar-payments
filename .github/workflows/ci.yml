@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    # 毎日 03:00 UTC ( JST 12:00 ) に履歴全体を再スキャンして既存リーク検出を継続。
+    - cron: "0 3 * * *"
 
 permissions:
   contents: read
@@ -15,8 +18,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # PR 差分だけでなく履歴全体を含めて検査するため。 Zenn 記事の推奨と一致。
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
 
   lint:
     name: lint
