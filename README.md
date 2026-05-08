@@ -15,6 +15,7 @@ Go と sunabar ( GMO あおぞらネット銀行の API サンドボックス ) 
 - 振込の状態機械 ( PENDING -> REQUESTED -> AWAITING_APPROVAL -> APPROVED -> SETTLED / FAILED )
 - 消込ワーカーで請求と入金の突合 ( OPEN / PARTIAL / CLEARED / EXCESS )
 - 観測性 ( 相関 ID 伝搬、 構造化ログ、 メトリクス、 機微情報マスク )
+- 3 状態 CircuitBreaker ( CLOSED / OPEN / HALF_OPEN ) + rolling window 失敗率による外部ゲートウェイ保護。 OPEN 由来の拒否は `outbox.ErrSkipAttempt` でラップし Outbox の attempt_count を消費しない
 
 ## 技術スタック
 - Go 1.25 以上 ( できる限り標準ライブラリだけで構成 )
