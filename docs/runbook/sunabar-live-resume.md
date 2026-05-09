@@ -5,7 +5,8 @@
 ## 1. 環境確認
 
 ```bash
-cd /Users/yujiokamoto/devs/golang/go-sunabar-payments
+# プロジェクトルートに移動
+cd "$(git rev-parse --show-toplevel)"
 
 # 最新の状態を pull
 git status

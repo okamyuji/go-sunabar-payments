@@ -3,10 +3,6 @@
 Go と sunabar ( GMO あおぞらネット銀行の API サンドボックス ) で作る個人開発の送金システム。
 モジュラーモノリス × Outbox で本番 BaaS 移行に耐える設計を目指す実装サンプル。
 
-> 関連記事
-> 「Go と sunabar で作る個人開発の送金システム — モジュラーモノリス × Outbox で本番移行に耐える設計」
-> Zenn 第 3 章ドラフト ( published: false ) を `/Users/yujiokamoto/devs/zenn/articles/go-sunabar-outbox-chapter-03-draft.md` に配置しています。 リポジトリ側の控えは `docs/article/draft-chapter-03.md` です。
-
 ## 何を作っているか
 - sunabar API を叩く最小実装 ( 残高照会、 振込依頼、 入出金明細、 バーチャル口座 )
 - 共通 Outbox パターンでビジネスデータ更新と外部 API 呼び出しの原子性を担保
