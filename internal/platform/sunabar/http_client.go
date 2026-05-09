@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -335,6 +336,10 @@ func (c *HTTPClient) ListTransactions(ctx context.Context, accountID string, par
 	count, err := parseSunabarInt(resp.Count)
 	if err != nil {
 		return nil, fmt.Errorf("parse count: %w", err)
+	}
+	// CWE-190 対策: int64 → int の narrowing で 32bit 環境でもオーバーフローしないよう範囲を確認する。
+	if count < 0 || count > int64(math.MaxInt) {
+		return nil, fmt.Errorf("count out of range: %d", count)
 	}
 	out := &TransactionList{
 		AccountID:    resp.AccountID,

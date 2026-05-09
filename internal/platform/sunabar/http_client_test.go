@@ -3,6 +3,8 @@ package sunabar_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -267,5 +269,55 @@ func TestIssueVirtualAccount_RequiresCorporateAuth(t *testing.T) {
 	})
 	if !errors.Is(err, sunabar.ErrNoCorporateAuth) {
 		t.Errorf("err = %v, want ErrNoCorporateAuth", err)
+	}
+}
+
+// newListTransactionsServer count フィールドを差し替え可能な /personal/v1/accounts/transactions モック。
+func newListTransactionsServer(t *testing.T, count string) *httptest.Server {
+	t.Helper()
+	body := fmt.Sprintf(`{"accountId":"ACC0001","currencyCode":"JPY","baseDate":"2026-05-01","baseTime":"00:00:00","hasNext":"false","count":%q,"transactions":[]}`, count)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/personal/v1/accounts/transactions" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func TestListTransactions_ParsesCount(t *testing.T) {
+	t.Parallel()
+	srv := newListTransactionsServer(t, "3")
+	c := newClient(t, srv.URL, staticAuth(t))
+	got, err := c.ListTransactions(context.Background(), "ACC0001", sunabar.ListTransactionsParams{})
+	if err != nil {
+		t.Fatalf("ListTransactions: %v", err)
+	}
+	if got.Count != 3 {
+		t.Errorf("Count = %d, want 3", got.Count)
+	}
+}
+
+// TestListTransactions_RejectsOutOfRangeCount CWE-190 ガード: int64 → int の narrowing で
+// 32bit 環境を含めて安全な範囲外なら明示的にエラーを返す。
+func TestListTransactions_RejectsOutOfRangeCount(t *testing.T) {
+	t.Parallel()
+	// 64bit 環境では math.MaxInt64 が int の上限を超えないので、 必ず上限超になる値として MaxInt64 を使う。
+	// 32bit でも 64bit でも超過するので決定的にエラーになる。
+	huge := fmt.Sprintf("%d", uint64(math.MaxInt64)+1)
+	srv := newListTransactionsServer(t, huge)
+	c := newClient(t, srv.URL, staticAuth(t))
+	_, err := c.ListTransactions(context.Background(), "ACC0001", sunabar.ListTransactionsParams{})
+	if err == nil {
+		t.Fatalf("err = nil, want out-of-range error")
+	}
+	// 負値も拒否する。
+	srv2 := newListTransactionsServer(t, "-1")
+	c2 := newClient(t, srv2.URL, staticAuth(t))
+	if _, err := c2.ListTransactions(context.Background(), "ACC0001", sunabar.ListTransactionsParams{}); err == nil {
+		t.Errorf("負値で err = nil")
 	}
 }
