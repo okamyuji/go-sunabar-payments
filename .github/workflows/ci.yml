@@ -86,4 +86,5 @@ jobs:
       - name: integration tests
         env:
           INTEGRATION_DB_DSN: app:app@tcp(127.0.0.1:3306)/payments?parseTime=true&loc=Asia%2FTokyo&multiStatements=true
-        run: go test -race -shuffle=on -count=1 -tags=integration -timeout=10m ./...
+        # 共有 MySQL を使うため、 パッケージ並列度を 1 に固定して resetSchema/applyMigrations の競合を防ぐ。
+        run: go test -race -shuffle=on -count=1 -p 1 -tags=integration -timeout=10m ./...
