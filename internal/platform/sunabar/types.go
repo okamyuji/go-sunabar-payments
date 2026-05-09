@@ -41,13 +41,15 @@ type ListTransactionsParams struct {
 }
 
 // TransactionList 入出金明細の一覧。
+// Count は sunabar 実 API が返す件数 ( 64bit) をそのまま保持する。
+// int への narrowing は避け、 32bit 環境でのオーバーフローを防ぐ。
 type TransactionList struct {
 	AccountID    string
 	CurrencyCode string
 	BaseDate     string
 	BaseTime     string
 	HasNext      bool
-	Count        int
+	Count        int64
 	Transactions []Transaction
 }
 

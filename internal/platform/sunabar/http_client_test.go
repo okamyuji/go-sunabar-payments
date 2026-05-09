@@ -301,23 +301,28 @@ func TestListTransactions_ParsesCount(t *testing.T) {
 	}
 }
 
-// TestListTransactions_RejectsOutOfRangeCount CWE-190 ガード: int64 → int の narrowing で
-// 32bit 環境を含めて安全な範囲外なら明示的にエラーを返す。
-func TestListTransactions_RejectsOutOfRangeCount(t *testing.T) {
+// TestListTransactions_AcceptsLargeCount Count は int64 で持つため
+// 32bit 上限を越える値も narrowing せずそのまま保持できる ( CWE-190 回避 ) 。
+func TestListTransactions_AcceptsLargeCount(t *testing.T) {
 	t.Parallel()
-	// 64bit 環境では math.MaxInt64 が int の上限を超えないので、 必ず上限超になる値として MaxInt64 を使う。
-	// 32bit でも 64bit でも超過するので決定的にエラーになる。
-	huge := fmt.Sprintf("%d", uint64(math.MaxInt64)+1)
+	huge := fmt.Sprintf("%d", int64(math.MaxInt32)+1)
 	srv := newListTransactionsServer(t, huge)
 	c := newClient(t, srv.URL, staticAuth(t))
-	_, err := c.ListTransactions(context.Background(), "ACC0001", sunabar.ListTransactionsParams{})
-	if err == nil {
-		t.Fatalf("err = nil, want out-of-range error")
+	got, err := c.ListTransactions(context.Background(), "ACC0001", sunabar.ListTransactionsParams{})
+	if err != nil {
+		t.Fatalf("ListTransactions: %v", err)
 	}
-	// 負値も拒否する。
-	srv2 := newListTransactionsServer(t, "-1")
-	c2 := newClient(t, srv2.URL, staticAuth(t))
-	if _, err := c2.ListTransactions(context.Background(), "ACC0001", sunabar.ListTransactionsParams{}); err == nil {
+	if got.Count != int64(math.MaxInt32)+1 {
+		t.Errorf("Count = %d, want %d", got.Count, int64(math.MaxInt32)+1)
+	}
+}
+
+// TestListTransactions_RejectsNegativeCount 件数は仕様上 0 以上のはず。 負値は API 異常として弾く。
+func TestListTransactions_RejectsNegativeCount(t *testing.T) {
+	t.Parallel()
+	srv := newListTransactionsServer(t, "-1")
+	c := newClient(t, srv.URL, staticAuth(t))
+	if _, err := c.ListTransactions(context.Background(), "ACC0001", sunabar.ListTransactionsParams{}); err == nil {
 		t.Errorf("負値で err = nil")
 	}
 }

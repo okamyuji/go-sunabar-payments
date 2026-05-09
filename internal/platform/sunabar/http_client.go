@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -337,8 +336,8 @@ func (c *HTTPClient) ListTransactions(ctx context.Context, accountID string, par
 	if err != nil {
 		return nil, fmt.Errorf("parse count: %w", err)
 	}
-	// CWE-190 対策: int64 → int の narrowing で 32bit 環境でもオーバーフローしないよう範囲を確認する。
-	if count < 0 || count > int64(math.MaxInt) {
+	// 件数は仕様上 0 以上。 負値は API 異常として弾く。
+	if count < 0 {
 		return nil, fmt.Errorf("count out of range: %d", count)
 	}
 	out := &TransactionList{
@@ -347,7 +346,7 @@ func (c *HTTPClient) ListTransactions(ctx context.Context, accountID string, par
 		BaseDate:     resp.BaseDate,
 		BaseTime:     resp.BaseTime,
 		HasNext:      strings.EqualFold(resp.HasNext, "true"),
-		Count:        int(count),
+		Count:        count,
 	}
 	out.Transactions = make([]Transaction, 0, len(resp.Transactions))
 	for _, t := range resp.Transactions {
