@@ -6,7 +6,7 @@ set -euo pipefail
 ROOT_DIR="$(git rev-parse --show-toplevel)"
 cd "$ROOT_DIR"
 
-export GOTOOLCHAIN="${GOTOOLCHAIN:-go1.25.0}"
+export GOTOOLCHAIN="${GOTOOLCHAIN:-go1.26.10}"
 
 echo "[pre-commit] gitleaks staged scan"
 if ! command -v gitleaks >/dev/null 2>&1; then
