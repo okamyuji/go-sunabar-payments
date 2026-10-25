@@ -291,7 +291,7 @@ func TestDrill_TransientServerErrorRecoversWithBackoff(t *testing.T) {
 
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
-		if _, err := db.Exec(`UPDATE outbox_events SET next_attempt_at=UTC_TIMESTAMP(6) WHERE status='PENDING'`); err != nil {
+		if _, err := db.Exec(`UPDATE outbox_events SET next_attempt_at=UTC_TIMESTAMP(6) - INTERVAL 1 MINUTE WHERE status='PENDING'`); err != nil {
 			t.Fatalf("reset next_attempt_at: %v", err)
 		}
 		if err := relay.ProcessBatch(context.Background()); err != nil {
@@ -356,7 +356,7 @@ func TestDrill_EmergencyStopHaltsDispatch(t *testing.T) {
 	}
 
 	// 復旧操作: 個別に PENDING に戻すと再投入される。
-	if _, err := db.Exec(`UPDATE outbox_events SET status='PENDING', last_error=NULL, next_attempt_at=UTC_TIMESTAMP(6) WHERE event_type=?`, transferdomain.EventTransferRequested); err != nil {
+	if _, err := db.Exec(`UPDATE outbox_events SET status='PENDING', last_error=NULL, next_attempt_at=UTC_TIMESTAMP(6) - INTERVAL 1 MINUTE WHERE event_type=?`, transferdomain.EventTransferRequested); err != nil {
 		t.Fatalf("restore PENDING: %v", err)
 	}
 	relay.Register(transferdomain.EventTransferRequested, mod.SendToSunabarHandler)
@@ -398,7 +398,7 @@ func TestDrill_TokenExpiredImmediatelyMarksTransferFailed(t *testing.T) {
 	relay := outbox.NewRelay(db, outbox.RelayConfig{BatchSize: 10, MaxAttempt: 5, Consumer: "drill"}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	relay.Register(transferdomain.EventTransferRequested, mod.SendToSunabarHandler)
 
-	if _, err := db.Exec(`UPDATE outbox_events SET next_attempt_at=UTC_TIMESTAMP(6) WHERE status='PENDING'`); err != nil {
+	if _, err := db.Exec(`UPDATE outbox_events SET next_attempt_at=UTC_TIMESTAMP(6) - INTERVAL 1 MINUTE WHERE status='PENDING'`); err != nil {
 		t.Fatalf("reset: %v", err)
 	}
 	if err := relay.ProcessBatch(context.Background()); err != nil {

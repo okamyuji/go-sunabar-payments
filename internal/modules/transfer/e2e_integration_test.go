@@ -241,7 +241,7 @@ func TestE2E_RequestThenRelaySendsToSunabar(t *testing.T) {
 		// Outbox の next_attempt_at を全件「過去」にして再投入を強制する ( バックオフ短絡 ) 。
 		// MySQL セッションタイムゾーン (+09:00) と publisher の UTC 書き込みがズレるため、
 		// MySQL の NOW() ではなく UTC_TIMESTAMP(6) を使う ( DB 内の比較も UTC ベース ) 。
-		if _, err := db.Exec(`UPDATE outbox_events SET next_attempt_at=UTC_TIMESTAMP(6) WHERE status='PENDING'`); err != nil {
+		if _, err := db.Exec(`UPDATE outbox_events SET next_attempt_at=UTC_TIMESTAMP(6) - INTERVAL 1 MINUTE WHERE status='PENDING'`); err != nil {
 			t.Fatalf("force reset next_attempt_at: %v", err)
 		}
 		if err := relay.ProcessBatch(context.Background()); err != nil {
