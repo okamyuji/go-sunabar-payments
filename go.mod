@@ -3,7 +3,7 @@ module go-sunabar-payments
 go 1.26.10
 
 require (
-	github.com/go-sql-driver/mysql v1.10.1
+	github.com/go-sql-driver/mysql v1.10.2
 	github.com/google/uuid v1.6.0
 	github.com/testcontainers/testcontainers-go/modules/mysql v0.45.0
 )
